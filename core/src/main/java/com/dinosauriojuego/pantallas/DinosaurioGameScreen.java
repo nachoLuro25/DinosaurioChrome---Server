@@ -532,4 +532,7 @@ public class DinosaurioGameScreen implements Screen {
         if (sonidoSalto != null) sonidoSalto.dispose();
         if (sonidoMuerte != null) sonidoMuerte.dispose();
     }
+
+    public void resetearServidorCompleto() {
+    }
 }
