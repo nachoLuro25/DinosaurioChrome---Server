@@ -6,10 +6,6 @@ import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
 
-/**
- * Simulación autoritativa del juego en el servidor
- * Mantiene el estado real del juego y lo sincroniza con los clientes
- */
 public class GameSimulacion {
 
     // Constantes de física
@@ -42,6 +38,10 @@ public class GameSimulacion {
 
         public float getAlto() {
             return agachado ? ALTO_AGACHADO : ALTO_NORMAL;
+        }
+
+        public float getAncho() {
+            return ANCHO;
         }
 
         public void reset() {
@@ -107,7 +107,7 @@ public class GameSimulacion {
         // Incrementar velocidad
         velocidad += VELOCIDAD_INCREMENTO * deltaTime;
 
-        // Actualizar puntuación (1 punto cada 10 unidades de distancia)
+        // Actualizar puntuación
         puntuacion = (int)((velocidad - VELOCIDAD_INICIAL) * 0.4f);
 
         // Spawn de obstáculos
@@ -209,7 +209,7 @@ public class GameSimulacion {
         Rectangle dinoBounds = new Rectangle();
         dinoBounds.x = x;
         dinoBounds.y = dino.y;
-        dinoBounds.width = EstadoDino.ANCHO;
+        dinoBounds.width = dino.getAncho();
         dinoBounds.height = dino.getAlto();
 
         for (EstadoObstaculo obs : obstaculos) {

@@ -6,10 +6,6 @@ import java.net.DatagramSocket;
 import java.net.InetAddress;
 import java.nio.charset.StandardCharsets;
 
-/**
- * Hilo del servidor para comunicación UDP con los clientes
- * Maneja la red, recibe inputs y envía snapshots
- */
 public class HiloServidor extends Thread {
 
     private static final int PUERTO = 8999;
