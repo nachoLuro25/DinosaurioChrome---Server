@@ -5,41 +5,69 @@ import java.net.DatagramPacket;
 import java.net.DatagramSocket;
 import java.net.InetAddress;
 import java.nio.charset.StandardCharsets;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 
+/**
+ * Servidor UDP mejorado con mejor manejo de concurrencia y estabilidad
+ */
 public class HiloServidor extends Thread {
 
     private static final int PUERTO = 8999;
     private static final int MAX_CLIENTES = 2;
     private static final int TICK_MS = 16; // 60 FPS
+    private static final int SOCKET_TIMEOUT_MS = 100; // Timeout razonable
 
     private DatagramSocket socket;
-    private volatile boolean running = true;
+    private final AtomicBoolean running = new AtomicBoolean(true);
 
-    // Información de clientes
-    private final InetAddress[] clientesIP = new InetAddress[MAX_CLIENTES];
-    private final int[] clientesPuerto = new int[MAX_CLIENTES];
-    private final boolean[] clientesListos = new boolean[MAX_CLIENTES];
-    private final boolean[] clientesResetReady = new boolean[MAX_CLIENTES];
-
-    private int cantidadClientes = 0;
-    private boolean juegoIniciado = false;
+    // Usar estructuras thread-safe
+    private final ConcurrentHashMap<String, ClientInfo> clientes = new ConcurrentHashMap<>();
+    private final AtomicInteger cantidadClientes = new AtomicInteger(0);
+    private final AtomicBoolean juegoIniciado = new AtomicBoolean(false);
 
     // Inputs de los jugadores (acumulados entre frames)
-    private boolean j1Saltar = false;
-    private boolean j1Agachar = false;
-    private boolean j2Saltar = false;
-    private boolean j2Agachar = false;
+    private volatile boolean j1Saltar = false;
+    private volatile boolean j1Agachar = false;
+    private volatile boolean j2Saltar = false;
+    private volatile boolean j2Agachar = false;
 
     // Simulación del juego
     private final GameSimulacion simulacion = new GameSimulacion();
-    private int tick = 0;
+    private final AtomicInteger tick = new AtomicInteger(0);
+
+    /**
+     * Clase para almacenar información del cliente de forma thread-safe
+     */
+    private static class ClientInfo {
+        final InetAddress ip;
+        final int puerto;
+        final int numeroJugador;
+        volatile boolean listo = false;
+        volatile boolean resetReady = false;
+
+        ClientInfo(InetAddress ip, int puerto, int numeroJugador) {
+            this.ip = ip;
+            this.puerto = puerto;
+            this.numeroJugador = numeroJugador;
+        }
+
+        String getId() {
+            return ip.getHostAddress() + ":" + puerto;
+        }
+    }
 
     public HiloServidor() {
+        super("ServidorUDP-Thread");
+        setDaemon(false); // Thread NO daemon para control manual
+
         try {
             socket = new DatagramSocket(PUERTO);
-            socket.setSoTimeout(5); // Timeout corto para el loop
+            socket.setSoTimeout(SOCKET_TIMEOUT_MS); // Timeout para no bloquear indefinidamente
             System.out.println("🟢 Servidor UDP iniciado en puerto " + PUERTO);
         } catch (Exception e) {
+            System.err.println("❌ Error al crear servidor: " + e.getMessage());
             throw new RuntimeException("Error al crear servidor: " + e.getMessage(), e);
         }
     }
@@ -48,46 +76,61 @@ public class HiloServidor extends Thread {
     public void run() {
         long ultimoTick = System.currentTimeMillis();
 
-        while (running) {
-            // Recibir mensajes de clientes
-            recibirMensajes();
+        System.out.println("🔄 Servidor en ejecución...");
 
-            // Simular juego si está iniciado
-            if (juegoIniciado) {
-                long ahora = System.currentTimeMillis();
-                if (ahora - ultimoTick >= TICK_MS) {
-                    // Simular un frame
-                    if (!simulacion.terminado) {
-                        simulacion.actualizar(
-                                TICK_MS / 1000f,
-                                j1Saltar, j1Agachar,
-                                j2Saltar, j2Agachar
-                        );
+        while (running.get()) {
+            try {
+                // Recibir mensajes de clientes
+                recibirMensajes();
+
+                // Simular juego si está iniciado
+                if (juegoIniciado.get()) {
+                    long ahora = System.currentTimeMillis();
+                    if (ahora - ultimoTick >= TICK_MS) {
+                        actualizarSimulacion();
+                        ultimoTick = ahora;
                     }
+                }
 
-                    // Reset los inputs "just pressed"
-                    j1Saltar = false;
-                    j2Saltar = false;
-
-                    // Verificar reset
-                    if (simulacion.terminado && contarResetReady() == 2) {
-                        reiniciarJuego();
-                    }
-
-                    tick++;
-                    enviarSnapshot();
-
-                    ultimoTick = ahora;
+            } catch (Exception e) {
+                if (running.get()) {
+                    System.err.println("⚠️ Error en loop principal: " + e.getMessage());
+                    e.printStackTrace();
                 }
             }
         }
 
         cerrarSocket();
-        System.out.println("🔴 Servidor detenido");
+        System.out.println("🔴 Servidor detenido correctamente");
     }
 
     /**
-     * Recibe mensajes de los clientes
+     * Actualiza la simulación del juego
+     */
+    private void actualizarSimulacion() {
+        if (!simulacion.terminado) {
+            simulacion.actualizar(
+                    TICK_MS / 1000f,
+                    j1Saltar, j1Agachar,
+                    j2Saltar, j2Agachar
+            );
+        }
+
+        // Reset los inputs "just pressed"
+        j1Saltar = false;
+        j2Saltar = false;
+
+        // Verificar reset
+        if (simulacion.terminado && contarResetReady() == 2) {
+            reiniciarJuego();
+        }
+
+        tick.incrementAndGet();
+        enviarSnapshot();
+    }
+
+    /**
+     * Recibe mensajes de los clientes con manejo de excepciones robusto
      */
     private void recibirMensajes() {
         try {
@@ -97,10 +140,20 @@ public class HiloServidor extends Thread {
 
             String mensaje = new String(paquete.getData(), 0, paquete.getLength(),
                     StandardCharsets.UTF_8).trim();
+
             procesarMensaje(mensaje, paquete.getAddress(), paquete.getPort());
 
-        } catch (Exception ignored) {
-            // Timeout es normal, no hacer nada
+        } catch (java.net.SocketTimeoutException e) {
+            // Timeout es normal, continuar
+        } catch (java.net.SocketException e) {
+            if (running.get()) {
+                System.err.println("❌ Error de socket: " + e.getMessage());
+            }
+        } catch (Exception e) {
+            if (running.get()) {
+                System.err.println("❌ Error al recibir mensaje: " + e.getMessage());
+                e.printStackTrace();
+            }
         }
     }
 
@@ -108,111 +161,151 @@ public class HiloServidor extends Thread {
      * Procesa un mensaje recibido
      */
     private void procesarMensaje(String mensaje, InetAddress ip, int puerto) {
-        int indiceCliente = buscarIndiceCliente(ip, puerto);
+        try {
+            String clienteId = ip.getHostAddress() + ":" + puerto;
+            ClientInfo cliente = clientes.get(clienteId);
 
-        // Mensaje de conexión
-        if (mensaje.equals("Conexion")) {
-            manejarConexion(ip, puerto);
-            return;
-        }
-
-        // Si el cliente no está registrado, ignorar
-        if (indiceCliente == -1) {
-            return;
-        }
-
-        // Mensaje de listo
-        if (mensaje.equals("Listo")) {
-            clientesListos[indiceCliente] = true;
-            System.out.println("✅ Cliente " + (indiceCliente + 1) + " listo");
-
-            if (clientesListos[0] && clientesListos[1] && !juegoIniciado) {
-                iniciarJuego();
+            // Mensaje de conexión
+            if (mensaje.equals("Conexion")) {
+                manejarConexion(ip, puerto);
+                return;
             }
-            return;
-        }
 
-        // Mensaje de reset
-        if (mensaje.equals("RESET")) {
-            if (simulacion.terminado) {
-                clientesResetReady[indiceCliente] = true;
-                System.out.println("🔄 Cliente " + (indiceCliente + 1) +
-                        " listo para reset (" + contarResetReady() + "/2)");
+            // Si el cliente no está registrado, ignorar
+            if (cliente == null) {
+                System.out.println("⚠️ Mensaje de cliente no registrado: " + mensaje);
+                return;
             }
-            return;
-        }
 
-        // Mensaje de input
-        if (mensaje.startsWith("INPUT;")) {
-            procesarInput(mensaje, indiceCliente);
+            // Mensaje de listo
+            if (mensaje.equals("Listo")) {
+                cliente.listo = true;
+                System.out.println("✅ Cliente " + cliente.numeroJugador + " listo");
+
+                if (todosListos()) {
+                    iniciarJuego();
+                }
+                return;
+            }
+
+            // Mensaje de reset
+            if (mensaje.equals("RESET")) {
+                if (simulacion.terminado) {
+                    cliente.resetReady = true;
+                    System.out.println("🔄 Cliente " + cliente.numeroJugador +
+                            " listo para reset (" + contarResetReady() + "/2)");
+                }
+                return;
+            }
+
+            // Mensaje de input
+            if (mensaje.startsWith("INPUT;")) {
+                procesarInput(mensaje, cliente);
+            }
+
+        } catch (Exception e) {
+            System.err.println("❌ Error al procesar mensaje: " + e.getMessage());
+            e.printStackTrace();
         }
     }
 
     /**
      * Procesa los inputs de un jugador
      */
-    private void procesarInput(String mensaje, int indiceCliente) {
+    private void procesarInput(String mensaje, ClientInfo cliente) {
         if (simulacion.terminado) {
             return;
         }
 
-        String[] partes = mensaje.split(";");
-        if (partes.length < 3) {
-            return;
-        }
+        try {
+            String[] partes = mensaje.split(";");
+            if (partes.length < 3) {
+                return;
+            }
 
-        boolean saltar = partes[1].equals("1");
-        boolean agachar = partes[2].equals("1");
+            boolean saltar = "1".equals(partes[1]);
+            boolean agachar = "1".equals(partes[2]);
 
-        if (indiceCliente == 0) {
-            j1Saltar = j1Saltar || saltar; // OR para no perder inputs
-            j1Agachar = agachar;
-        } else {
-            j2Saltar = j2Saltar || saltar;
-            j2Agachar = agachar;
+            // Asignar inputs según número de jugador
+            if (cliente.numeroJugador == 1) {
+                j1Saltar = j1Saltar || saltar;
+                j1Agachar = agachar;
+            } else if (cliente.numeroJugador == 2) {
+                j2Saltar = j2Saltar || saltar;
+                j2Agachar = agachar;
+            }
+
+        } catch (Exception e) {
+            System.err.println("❌ Error al procesar input: " + e.getMessage());
         }
     }
 
     /**
-     * Maneja una nueva conexión
+     * Maneja una nueva conexión de cliente
      */
-    private void manejarConexion(InetAddress ip, int puerto) {
-        // Verificar si ya está conectado
-        for (int i = 0; i < cantidadClientes; i++) {
-            if (clientesIP[i].equals(ip) && clientesPuerto[i] == puerto) {
-                enviarMensaje("OK", ip, puerto);
-                return;
-            }
-        }
+    private synchronized void manejarConexion(InetAddress ip, int puerto) {
+        String clienteId = ip.getHostAddress() + ":" + puerto;
 
-        // Verificar si hay espacio
-        if (cantidadClientes >= MAX_CLIENTES) {
-            enviarMensaje("Full", ip, puerto);
+        // Verificar si ya está conectado
+        if (clientes.containsKey(clienteId)) {
+            enviarMensaje("OK", ip, puerto);
+            System.out.println("⚠️ Cliente ya conectado: " + clienteId);
             return;
         }
 
+        // Verificar si hay espacio
+        if (cantidadClientes.get() >= MAX_CLIENTES) {
+            enviarMensaje("Full", ip, puerto);
+            System.out.println("⚠️ Servidor lleno, rechazando: " + clienteId);
+            return;
+        }
+
+        // Determinar número de jugador (1 o 2)
+        int numeroJugador = cantidadClientes.get() + 1;
+
         // Registrar nuevo cliente
-        clientesIP[cantidadClientes] = ip;
-        clientesPuerto[cantidadClientes] = puerto;
-        clientesListos[cantidadClientes] = false;
-        clientesResetReady[cantidadClientes] = false;
+        ClientInfo nuevoCliente = new ClientInfo(ip, puerto, numeroJugador);
+        clientes.put(clienteId, nuevoCliente);
+        cantidadClientes.incrementAndGet();
 
         enviarMensaje("OK", ip, puerto);
-        cantidadClientes++;
+        System.out.println("✅ Cliente " + numeroJugador + " conectado: " + clienteId +
+                " (total: " + cantidadClientes.get() + "/2)");
+    }
 
-        System.out.println("✅ Cliente conectado: " + ip.getHostAddress() + ":" + puerto +
-                " (total: " + cantidadClientes + "/2)");
+    /**
+     * Verifica si todos los clientes están listos
+     */
+    private boolean todosListos() {
+        if (cantidadClientes.get() < MAX_CLIENTES) {
+            return false;
+        }
+
+        for (ClientInfo cliente : clientes.values()) {
+            if (!cliente.listo) {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     /**
      * Inicia el juego cuando ambos clientes están listos
      */
-    private void iniciarJuego() {
-        juegoIniciado = true;
+    private synchronized void iniciarJuego() {
+        if (juegoIniciado.get()) {
+            return;
+        }
+
+        juegoIniciado.set(true);
         simulacion.reset();
-        tick = 0;
-        clientesResetReady[0] = false;
-        clientesResetReady[1] = false;
+        tick.set(0);
+
+        // Resetear flags de reset
+        for (ClientInfo cliente : clientes.values()) {
+            cliente.resetReady = false;
+        }
 
         broadcast("Empieza");
         System.out.println("🎮 ¡JUEGO INICIADO!");
@@ -221,13 +314,16 @@ public class HiloServidor extends Thread {
     /**
      * Reinicia el juego
      */
-    private void reiniciarJuego() {
+    private synchronized void reiniciarJuego() {
         System.out.println("🔄 Reiniciando juego...");
 
         simulacion.reset();
-        tick = 0;
-        clientesResetReady[0] = false;
-        clientesResetReady[1] = false;
+        tick.set(0);
+
+        // Resetear flags de reset
+        for (ClientInfo cliente : clientes.values()) {
+            cliente.resetReady = false;
+        }
 
         j1Saltar = j2Saltar = false;
         j1Agachar = j2Agachar = false;
@@ -240,10 +336,10 @@ public class HiloServidor extends Thread {
         StringBuilder sb = new StringBuilder("SNAP;");
 
         // Información general
-        sb.append(tick).append(";")
+        sb.append(tick.get()).append(";")
                 .append(simulacion.puntuacion).append(";")
                 .append(simulacion.velocidad).append(";")
-                .append(juegoIniciado ? 1 : 0).append(";")
+                .append(juegoIniciado.get() ? 1 : 0).append(";")
                 .append(simulacion.terminado ? 1 : 0).append(";")
                 .append(seguro(simulacion.mensajeFin)).append(";")
                 .append(contarResetReady()).append(";");
@@ -276,12 +372,19 @@ public class HiloServidor extends Thread {
      * Envía un mensaje a un cliente específico
      */
     private void enviarMensaje(String mensaje, InetAddress ip, int puerto) {
+        if (socket == null || socket.isClosed()) {
+            System.err.println("⚠️ Socket cerrado, no se puede enviar: " + mensaje);
+            return;
+        }
+
         try {
             byte[] datos = mensaje.getBytes(StandardCharsets.UTF_8);
             DatagramPacket paquete = new DatagramPacket(datos, datos.length, ip, puerto);
             socket.send(paquete);
         } catch (Exception e) {
-            System.err.println("❌ Error al enviar mensaje: " + e.getMessage());
+            if (running.get()) {
+                System.err.println("❌ Error al enviar mensaje: " + e.getMessage());
+            }
         }
     }
 
@@ -289,21 +392,9 @@ public class HiloServidor extends Thread {
      * Envía un mensaje a todos los clientes conectados
      */
     private void broadcast(String mensaje) {
-        for (int i = 0; i < cantidadClientes; i++) {
-            enviarMensaje(mensaje, clientesIP[i], clientesPuerto[i]);
+        for (ClientInfo cliente : clientes.values()) {
+            enviarMensaje(mensaje, cliente.ip, cliente.puerto);
         }
-    }
-
-    /**
-     * Busca el índice de un cliente por IP y puerto
-     */
-    private int buscarIndiceCliente(InetAddress ip, int puerto) {
-        for (int i = 0; i < cantidadClientes; i++) {
-            if (clientesIP[i].equals(ip) && clientesPuerto[i] == puerto) {
-                return i;
-            }
-        }
-        return -1;
     }
 
     /**
@@ -311,8 +402,10 @@ public class HiloServidor extends Thread {
      */
     private int contarResetReady() {
         int count = 0;
-        for (int i = 0; i < MAX_CLIENTES; i++) {
-            if (clientesResetReady[i]) count++;
+        for (ClientInfo cliente : clientes.values()) {
+            if (cliente.resetReady) {
+                count++;
+            }
         }
         return count;
     }
@@ -326,20 +419,38 @@ public class HiloServidor extends Thread {
     }
 
     /**
-     * Cierra el socket
+     * Cierra el socket de forma segura
      */
     private void cerrarSocket() {
-        if (socket != null && !socket.isClosed()) {
-            socket.close();
+        try {
+            if (socket != null && !socket.isClosed()) {
+                socket.close();
+                System.out.println("🔌 Socket cerrado correctamente");
+            }
+        } catch (Exception e) {
+            System.err.println("⚠️ Error al cerrar socket: " + e.getMessage());
         }
     }
 
     /**
-     * Detiene el servidor
+     * Detiene el servidor de forma segura
      */
     public void cerrar() {
         System.out.println("🛑 Cerrando servidor...");
-        running = false;
+
+        running.set(false);
+
+        // Notificar a todos los clientes
+        broadcast("Desconectar");
+
+        // Esperar un momento para que llegue el mensaje
+        try {
+            Thread.sleep(100);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        }
+
+        cerrarSocket();
         interrupt();
     }
 
@@ -349,14 +460,14 @@ public class HiloServidor extends Thread {
     }
 
     public int getCantidadClientes() {
-        return cantidadClientes;
+        return cantidadClientes.get();
     }
 
     public boolean isJuegoIniciado() {
-        return juegoIniciado;
+        return juegoIniciado.get();
     }
 
     public int getTick() {
-        return tick;
+        return tick.get();
     }
 }
