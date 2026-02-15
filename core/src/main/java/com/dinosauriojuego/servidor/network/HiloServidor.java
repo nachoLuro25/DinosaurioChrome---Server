@@ -17,7 +17,7 @@ public class HiloServidor extends Thread {
     private static final int PUERTO = 8999;
     private static final int MAX_CLIENTES = 2;
     private static final int TICK_MS = 16; // 60 FPS
-    private static final int SOCKET_TIMEOUT_MS = 100; // Timeout razonable
+    private static final int SOCKET_TIMEOUT_MS = 50; // Timeout razonable
 
     private DatagramSocket socket;
     private final AtomicBoolean running = new AtomicBoolean(true);
