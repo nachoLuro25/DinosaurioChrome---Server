@@ -152,14 +152,16 @@ public class PantallaServidor extends ScreenAdapter {
             }
 
             // dinos
-            final float DINO_W = 44f;
-            final float DINO_H = 60f;
-            final float DINO_Y_OFFSET = 20f;
+            final float DINO_W = 74.8f;
+            final float DINO_Y_OFFSET = 40f;
 
             Texture d1 = elegirDinoTex(snap.p1.vivo, snap.p1.enPiso, snap.p1.agachado, snap.tick);
-            batch.draw(d1, X_JUGADOR_1, snap.p1.y + DINO_Y_OFFSET, DINO_W, DINO_H);
+            float dino1H = snap.p1.agachado ? 51f : 102f;
+            batch.draw(d1, X_JUGADOR_1, snap.p1.y + DINO_Y_OFFSET, DINO_W, dino1H);
+
             Texture d2 = elegirDinoTex(snap.p2.vivo, snap.p2.enPiso, snap.p2.agachado, snap.tick);
-            batch.draw(d2, X_JUGADOR_2, snap.p2.y + DINO_Y_OFFSET, DINO_W, DINO_H);
+            float dino2H = snap.p2.agachado ? 51f : 102f;
+            batch.draw(d2, X_JUGADOR_2, snap.p2.y + DINO_Y_OFFSET, DINO_W, dino2H);
 
             // HUD minimalista estilo Chrome: score arriba a la derecha
             fontMedia.setColor(COL_GRIS_OSC);

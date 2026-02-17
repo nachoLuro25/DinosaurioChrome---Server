@@ -46,10 +46,10 @@ public class GameSimDino {
     public boolean terminado = false;
     public String mensajeFin = "";
     // dimensiones obstaculos
-    private static final float CACTUS_W = 60;
-    private static final float CACTUS_H = 80;
-    private static final float PTERO_W  = 92;
-    private static final float PTERO_H  = 60;
+    private static final float CACTUS_W = 150;
+    private static final float CACTUS_H = 150;
+    private static final float PTERO_W  = 150;
+    private static final float PTERO_H  = 150;
 
     // reinicia el juego
     public void reset() {
@@ -132,15 +132,14 @@ public class GameSimDino {
         float dx = (playerId == 1) ? Constantes.X_JUGADOR_1 : Constantes.X_JUGADOR_2;
 
 
-        float spriteW = 44f;
-        float spriteH = d.agachado ? 40f : 60f;
+        float spriteW = 74.8f;
+        float spriteH = d.agachado ? 51f : 102f;
 
+        float hitW = spriteW - 55f;
+        float hitH = spriteH - (d.agachado ? 17f : 30f);
 
-        float hitW = spriteW - 14f;
-        float hitH = spriteH - (d.agachado ? 10f : 14f);
-
-        float hitX = dx + 7f;
-        float hitY = d.y + 6f;
+        float hitX = dx + 35f;
+        float hitY = d.y + 40f;
 
         if (d.agachado) hitY = d.y + 4f;
 
@@ -191,10 +190,10 @@ public class GameSimDino {
         o.h = CACTUS_H;
 
 
-        o.hbL = 10;
-        o.hbR = 10;
-        o.hbB = 2;
-        o.hbT = 6;
+        o.hbL = 65;
+        o.hbR = 35;
+        o.hbB = 60;
+        o.hbT = 20;
 
         obstacles.add(o);
     }
@@ -216,10 +215,10 @@ public class GameSimDino {
         o.w = PTERO_W;
         o.h = PTERO_H;
 
-        o.hbL = 16;
-        o.hbR = 16;
-        o.hbB = 10;
-        o.hbT = 12;
+        o.hbL = 45;
+        o.hbR = 45;
+        o.hbB = 60;
+        o.hbT = 30;
 
         obstacles.add(o);
     }

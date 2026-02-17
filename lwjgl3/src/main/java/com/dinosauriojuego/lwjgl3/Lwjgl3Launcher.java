@@ -19,7 +19,6 @@ public class Lwjgl3Launcher {
 
         config.useVsync(true);
         config.setForegroundFPS(Lwjgl3ApplicationConfiguration.getDisplayMode().refreshRate + 1);
-
         // Ponelo como quieras (yo lo dejo 1280x720 para ver bien la partida)
         config.setWindowedMode(1280, 720);
 
