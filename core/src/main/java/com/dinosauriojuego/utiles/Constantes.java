@@ -6,7 +6,7 @@ public final class Constantes {
     public static final int ANCHO_VIRTUAL = 1280;
     public static final int ALTO_VIRTUAL  = 720;
 
-    public static final float Y_PISO = 200f;
+    public static final float Y_PISO = 210f;
 
     public static final float GRAVEDAD = -1700f;
     public static final float VELOCIDAD_SALTO = 700f;
