@@ -127,7 +127,7 @@ public class GameSimDino {
     }
 
 
-    //chequear si un dino colisiona con algun obstaculo
+    //COLISIONES: chequear si un dino colisiona con algun obstaculo
     private boolean collidesDino(int playerId, Dino d) {
         float dx = (playerId == 1) ? Constantes.X_JUGADOR_1 : Constantes.X_JUGADOR_2;
 
