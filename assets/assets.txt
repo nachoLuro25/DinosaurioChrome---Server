@@ -13,6 +13,7 @@ Dinosaurio2/dino2muerto.png
 Dinosaurio2/dino2quieto.png
 Ptedoractilos/pterodactilo1.png
 Ptedoractilos/pterodactilo2.png
+audio/hrthrthrthrthtr.png
 audio/muerte.wav
 audio/musica.mp3
 audio/salto.wav
