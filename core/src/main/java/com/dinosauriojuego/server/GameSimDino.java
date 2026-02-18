@@ -235,9 +235,11 @@ public class GameSimDino {
         o.variant = r;
 
         // altura del ptero relativa al piso de su pista
-        float y = yPiso + 55;
-        if (r == 1) y = yPiso + 85;
-        if (r == 2) y = yPiso + 110;
+        float offsetBase = 30f; // cuánto lo subís
+
+        float y = yPiso + 55 + offsetBase;
+        if (r == 1) y = yPiso + 100 + offsetBase;
+        if (r == 2) y = yPiso + 110 + offsetBase;
 
         o.x = xSpawn;
         o.y = y;
@@ -246,8 +248,8 @@ public class GameSimDino {
 
         o.hbL = 45;
         o.hbR = 45;
-        o.hbB = 60;
-        o.hbT = 30;
+        o.hbB = 0;
+        o.hbT = 80;
 
         lista.add(o);
     }
