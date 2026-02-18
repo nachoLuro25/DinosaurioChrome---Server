@@ -21,25 +21,29 @@ import com.dinosauriojuego.utiles.Constantes;
 
 public class PantallaServidor extends ScreenAdapter {
 
-    private final Main juego;
+    private final Main   juego;
     private final Assets assets;
 
     private OrthographicCamera cam;
-    private Viewport viewport;
-    private SpriteBatch batch;
-    private BitmapFont fontGrande;
-    private BitmapFont fontMedia;
-    private BitmapFont fontChica;
+    private Viewport      viewport;
+    private SpriteBatch   batch;
+    private BitmapFont    fontGrande;
+    private BitmapFont    fontMedia;
+    private BitmapFont    fontChica;
     private ShapeRenderer shape;
-    private GlyphLayout layout;
+    private GlyphLayout   layout;
 
-    private float fondoX = 0f;
-    private float velocidadFondo = 140f;
+    // cada pista tiene su propio offset de scroll del fondo
+    private float fondoXP1 = 0f;
+    private float fondoXP2 = 0f;
+    private static final float VEL_FONDO  = 140f;
+
     private boolean esNoche = false;
     private static final int SCORE_CAMBIO = 500;
 
     private ServidorDino server;
-    private float tiempo = 0f;
+    private float tiempo       = 0f;
+    private float dinoAnimTick = 0f;
 
     // nubes del lobby
     private static final int NUM_NUBES = 6;
@@ -48,16 +52,9 @@ public class PantallaServidor extends ScreenAdapter {
     private float[] nubeSpd = new float[NUM_NUBES];
     private float[] nubeW   = new float[NUM_NUBES];
 
-    // cactus decorativos fijos en el fondo del lobby
     private float[] cactusDecoX = { 180f, 520f, 820f, 1100f };
 
-    // animacion del dino del lobby
-    private float dinoAnimTick = 0f;
-
-    private static final float X_JUGADOR_1 = Constantes.X_JUGADOR_1;
-    private static final float X_JUGADOR_2 = Constantes.X_JUGADOR_2;
-
-    // paleta fiel al juego de Chrome
+    // paleta Chrome
     private static final Color COL_BG      = new Color(0.95f, 0.95f, 0.95f, 1f);
     private static final Color COL_BLANCO  = new Color(1f,    1f,    1f,    1f);
     private static final Color COL_NUBE    = new Color(0.82f, 0.82f, 0.82f, 1f);
@@ -67,7 +64,7 @@ public class PantallaServidor extends ScreenAdapter {
     private static final Color COL_NEGRO   = new Color(0.20f, 0.20f, 0.20f, 1f);
 
     public PantallaServidor(Main juego, Assets assets) {
-        this.juego = juego;
+        this.juego  = juego;
         this.assets = assets;
     }
 
@@ -78,21 +75,17 @@ public class PantallaServidor extends ScreenAdapter {
         batch    = new SpriteBatch();
         shape    = new ShapeRenderer();
         layout   = new GlyphLayout();
-
         fontGrande = new BitmapFont();
         fontMedia  = new BitmapFont();
         fontChica  = new BitmapFont();
 
-        // posiciones iniciales de nubes
-        float[] alts  = { 430f, 470f, 510f, 400f, 445f, 485f };
+        float[] alts  = { 530f, 570f, 610f, 500f, 545f, 585f };
         float[] anchs = { 155f, 115f, 195f, 135f, 175f, 108f };
         float[] spds  = {  28f,  22f,  18f,  32f,  25f,  20f };
         java.util.Random rng = new java.util.Random(7);
         for (int i = 0; i < NUM_NUBES; i++) {
-            nubeX[i]   = rng.nextFloat() * Constantes.ANCHO_VIRTUAL;
-            nubeY[i]   = alts[i];
-            nubeSpd[i] = spds[i];
-            nubeW[i]   = anchs[i];
+            nubeX[i] = rng.nextFloat() * Constantes.ANCHO_VIRTUAL;
+            nubeY[i] = alts[i]; nubeSpd[i] = spds[i]; nubeW[i] = anchs[i];
         }
 
         server = new ServidorDino();
@@ -100,7 +93,6 @@ public class PantallaServidor extends ScreenAdapter {
         server.start();
     }
 
-    // -------------------------------------------------------------------------
     @Override
     public void render(float delta) {
         tiempo       += delta;
@@ -112,88 +104,135 @@ public class PantallaServidor extends ScreenAdapter {
         viewport.apply();
         cam.update();
 
-        if (!partidaEnCurso) {
-            dibujarLobby(delta);
-            return;
-        }
+        if (!partidaEnCurso) { dibujarLobby(delta); return; }
 
-        // ---- PARTIDA EN CURSO ------------------------------------------------
+        // ---- PARTIDA EN CURSO -----------------------------------------------
         Gdx.gl.glClearColor(COL_BG.r, COL_BG.g, COL_BG.b, 1f);
         Gdx.gl.glClear(GL20.GL_COLOR_BUFFER_BIT);
 
         if (snap != null) esNoche = (snap.score / SCORE_CAMBIO) % 2 == 1;
         Texture fondo = esNoche ? assets.fondoNoche : assets.fondoDia;
 
-        boolean freezeBg = (snap != null && snap.terminado);
-        if (!freezeBg) fondoX -= velocidadFondo * delta;
-        float w = Constantes.ANCHO_VIRTUAL;
+        boolean freeze = (snap != null && snap.terminado);
+        if (!freeze) {
+            fondoXP1 -= VEL_FONDO * delta;
+            fondoXP2 -= VEL_FONDO * delta;
+        }
+        float W = Constantes.ANCHO_VIRTUAL;
+        float H = Constantes.ALTO_VIRTUAL;
+        if (fondoXP1 <= -W) fondoXP1 = 0f;
+        if (fondoXP2 <= -W) fondoXP2 = 0f;
+
+        // convertir coordenadas virtuales a pixels reales para glScissor
+        float scaleX = (float) Gdx.graphics.getWidth()  / W;
+        float scaleY = (float) Gdx.graphics.getHeight() / H;
+
+        int pista1Y = Math.round(Constantes.Y_DIVISOR * scaleY);
+        int pista1H = Math.round((H - Constantes.Y_DIVISOR) * scaleY);
+        int pista2H = Math.round(Constantes.Y_DIVISOR * scaleY);
+
+        // ---- FONDO PISTA P1 (zona superior) con scissor ----
+        Gdx.gl.glEnable(GL20.GL_SCISSOR_TEST);
+        Gdx.gl.glScissor(0, pista1Y, Gdx.graphics.getWidth(), pista1H);
 
         batch.setProjectionMatrix(cam.combined);
         batch.begin();
-        batch.draw(fondo, fondoX, 0, w, Constantes.ALTO_VIRTUAL);
-        batch.draw(fondo, fondoX + w, 0, w, Constantes.ALTO_VIRTUAL);
-        if (fondoX <= -w) fondoX = 0f;
+        float offsetP1 = Constantes.Y_PISO_P1 - 210f; // 210 es donde el fondo tiene su piso naturalmente
+        batch.draw(fondo, fondoXP1,     offsetP1, W, H);
+        batch.draw(fondo, fondoXP1 + W, offsetP1, W, H);
+        batch.end();
 
+        // ---- FONDO PISTA P2 (zona inferior) con scissor ----
+        Gdx.gl.glScissor(0, 0, Gdx.graphics.getWidth(), pista2H);
+
+        batch.begin();
+        float offsetP2 = Constantes.Y_PISO_P2 - 210f;
+        batch.draw(fondo, fondoXP2,     offsetP2, W, H);
+        batch.draw(fondo, fondoXP2 + W, offsetP2, W, H);
+        batch.end();
+
+        // apagar scissor para dibujar el resto sin restriccion
+        Gdx.gl.glDisable(GL20.GL_SCISSOR_TEST);
+
+        // ---- DIBUJAR PISTAS ----
         if (snap != null) {
-            // obstáculos
-            for (SnapshotDino.ObstacleState o : snap.obstacles) {
-                if (o.type == 0) {
-                    Texture t;
-                    if      (o.variant == 0) t = assets.cactusChico1;
-                    else if (o.variant == 1) t = assets.cactusChico2;
-                    else if (o.variant == 2) t = assets.cactusGrande1;
-                    else if (o.variant == 3) t = assets.cactusGrande2;
-                    else                     t = assets.cactusCombinado;
-                    batch.draw(t, o.x, Constantes.Y_PISO);
-                } else {
-                    Texture t = (snap.tick % 12 < 6) ? assets.ptero1 : assets.ptero2;
-                    batch.draw(t, o.x, o.y);
-                }
-            }
+            batch.begin();
+            dibujarPista(snap, true);  // pista superior P1
+            dibujarPista(snap, false); // pista inferior P2
 
-            // dinos
-            final float DINO_W = 74.8f;
-            final float DINO_Y_OFFSET = 40f;
-
-            Texture d1 = elegirDinoTex(snap.p1.vivo, snap.p1.enPiso, snap.p1.agachado, snap.tick);
-            float dino1H = snap.p1.agachado ? 51f : 102f;
-            batch.draw(d1, X_JUGADOR_1, snap.p1.y + DINO_Y_OFFSET, DINO_W, dino1H);
-
-            Texture d2 = elegirDinoTex(snap.p2.vivo, snap.p2.enPiso, snap.p2.agachado, snap.tick);
-            float dino2H = snap.p2.agachado ? 51f : 102f;
-            batch.draw(d2, X_JUGADOR_2, snap.p2.y + DINO_Y_OFFSET, DINO_W, dino2H);
-
-            // HUD minimalista estilo Chrome: score arriba a la derecha
+            // HUD score
             fontMedia.setColor(COL_GRIS_OSC);
             fontMedia.getData().setScale(1.5f);
             String scoreStr = String.format("%05d", snap.score);
             layout.setText(fontMedia, scoreStr);
-            fontMedia.draw(batch, scoreStr,
-                    Constantes.ANCHO_VIRTUAL - layout.width - 24,
-                    Constantes.ALTO_VIRTUAL - 22);
+            fontMedia.draw(batch, scoreStr, W - layout.width - 24, H - 22);
+            batch.end();
 
-            // etiquetas de jugadores
-            fontChica.setColor(COL_GRIS_OSC);
-            fontChica.getData().setScale(1.1f);
-            fontChica.draw(batch, "P1", X_JUGADOR_1 + 8, snap.p1.y + 74);
-            fontChica.draw(batch, "P2", X_JUGADOR_2 + 8, snap.p2.y + 74);
+            // pisos y divisor
+            dibujarPisosYDivisor();
 
-            if (snap.terminado) {
-                batch.end();
-                dibujarFinPartida(snap);
-                return;
+            if (snap.terminado) { dibujarFinPartida(snap); return; }
+        } else {
+            dibujarPisosYDivisor();
+        }
+    }
+
+    // dibuja los elementos de una pista: obstaculos, dino y etiqueta
+    // esP1=true => pista superior (P1), esP1=false => pista inferior (P2)
+    private void dibujarPista(SnapshotDino snap, boolean esP1) {
+        final float DINO_W     = 74.8f;
+        final float DINO_Y_OFF = 40f;
+
+        float xJugador = esP1 ? Constantes.X_JUGADOR_1 : Constantes.X_JUGADOR_2;
+        float yPiso    = esP1 ? Constantes.Y_PISO_P1   : Constantes.Y_PISO_P2;
+        SnapshotDino.DinoState dino = esP1 ? snap.p1 : snap.p2;
+        java.util.ArrayList<SnapshotDino.ObstacleState> obs =
+                esP1 ? snap.obstaculosP1 : snap.obstaculosP2;
+        String etiqueta = esP1 ? "P1" : "P2";
+
+        for (SnapshotDino.ObstacleState o : obs) {
+            if (o.type == 0) {
+                Texture t;
+                if      (o.variant == 0) t = assets.cactusChico1;
+                else if (o.variant == 1) t = assets.cactusChico2;
+                else if (o.variant == 2) t = assets.cactusGrande1;
+                else if (o.variant == 3) t = assets.cactusGrande2;
+                else                     t = assets.cactusCombinado;
+                batch.draw(t, o.x, yPiso);
+            } else {
+                Texture t = (snap.tick % 12 < 6) ? assets.ptero1 : assets.ptero2;
+                batch.draw(t, o.x, o.y);
             }
         }
-        batch.end();
+
+        float dinoH = dino.agachado ? 51f : 102f;
+        Texture dinoTex = elegirDinoTex(dino.vivo, dino.enPiso, dino.agachado, snap.tick);
+        batch.draw(dinoTex, xJugador, dino.y + DINO_Y_OFF, DINO_W, dinoH);
+
+        fontChica.setColor(COL_GRIS_OSC);
+        fontChica.getData().setScale(1.1f);
+        fontChica.draw(batch, etiqueta, xJugador + 8, dino.y + DINO_Y_OFF + dinoH + 6);
+    }
+
+    // dibuja los pisos de cada pista y la linea divisoria
+    private void dibujarPisosYDivisor() {
+        float W = Constantes.ANCHO_VIRTUAL;
+        Gdx.gl.glEnable(GL20.GL_BLEND);
+        Gdx.gl.glBlendFunc(GL20.GL_SRC_ALPHA, GL20.GL_ONE_MINUS_SRC_ALPHA);
+        shape.setProjectionMatrix(cam.combined);
+        shape.begin(ShapeRenderer.ShapeType.Filled);
+        shape.setColor(COL_PISO);
+        shape.rect(0, Constantes.Y_PISO_P1 - 4, W, 4f); // piso pista P1
+        shape.rect(0, Constantes.Y_PISO_P2 - 4, W, 4f); // piso pista P2
+        shape.end();
     }
 
     // -------------------------------------------------------------------------
     private void dibujarLobby(float delta) {
-        float W = Constantes.ANCHO_VIRTUAL;
-        float H = Constantes.ALTO_VIRTUAL;
+        float W   = Constantes.ANCHO_VIRTUAL;
+        float H   = Constantes.ALTO_VIRTUAL;
         int   cant = server.getCantClientes();
 
-        // fondo color Chrome
         Gdx.gl.glClearColor(COL_BG.r, COL_BG.g, COL_BG.b, 1f);
         Gdx.gl.glClear(GL20.GL_COLOR_BUFFER_BIT);
         Gdx.gl.glEnable(GL20.GL_BLEND);
@@ -201,7 +240,7 @@ public class PantallaServidor extends ScreenAdapter {
 
         shape.setProjectionMatrix(cam.combined);
 
-        // --- nubes moviéndose ---
+        // nubes moviendose
         shape.begin(ShapeRenderer.ShapeType.Filled);
         for (int i = 0; i < NUM_NUBES; i++) {
             nubeX[i] -= nubeSpd[i] * delta;
@@ -210,134 +249,91 @@ public class PantallaServidor extends ScreenAdapter {
         }
         shape.end();
 
-        // --- línea del piso ---
+        // piso del lobby
         shape.begin(ShapeRenderer.ShapeType.Filled);
         shape.setColor(COL_PISO);
-        shape.rect(0, Constantes.Y_PISO - 4, W, 4f);
+        shape.rect(0, Constantes.Y_PISO_P1 - 4, W, 4f);
         shape.end();
 
-        // --- cactus decorativos grises en el piso ---
+        // cactus decorativos
         batch.setProjectionMatrix(cam.combined);
         batch.begin();
         batch.setColor(0.78f, 0.78f, 0.78f, 1f);
-        for (float cx : cactusDecoX) {
-            batch.draw(assets.cactusChico1, cx, Constantes.Y_PISO);
-        }
+        for (float cx : cactusDecoX) batch.draw(assets.cactusChico1, cx, Constantes.Y_PISO_P1);
         batch.setColor(COL_BLANCO);
 
-        // --- dino animado caminando ---
+        // dino animado
         Texture dinoTex = ((int) dinoAnimTick % 12 < 6) ? assets.dinoMov1 : assets.dinoMov2;
-        batch.draw(dinoTex, 280f, Constantes.Y_PISO);
+        batch.draw(dinoTex, 280f, Constantes.Y_PISO_P1);
 
-        // ---- TEXTOS ----
-
-        // HI score decorativo (esquina superior derecha, estilo Chrome)
+        // HI score decorativo
         fontMedia.setColor(COL_GRIS);
         fontMedia.getData().setScale(1.45f);
         String hiStr = "HI  00000";
         layout.setText(fontMedia, hiStr);
         fontMedia.draw(batch, hiStr, W - layout.width - 24, H - 24);
 
-        // título grande
+        // titulo
         fontGrande.setColor(COL_NEGRO);
         fontGrande.getData().setScale(3.5f);
         centrarTexto(fontGrande, "DINO CHROME", W, H - 88);
-
-        // línea fina debajo del título
         batch.end();
+
+        // linea bajo el titulo
         shape.begin(ShapeRenderer.ShapeType.Filled);
         shape.setColor(COL_PISO);
         shape.rect(W / 2f - 210, H - 148, 420, 2.5f);
         shape.end();
-        batch.begin();
 
-        // subtítulo
+        batch.begin();
         fontChica.setColor(COL_GRIS);
         fontChica.getData().setScale(1.25f);
         centrarTexto(fontChica, "MULTIJUGADOR  —  SERVIDOR", W, H - 170);
 
-        // --- bloque de estado de conexion ---
         float bloqueY = H / 2f + 70f;
-
-        // texto principal de estado
         fontMedia.getData().setScale(1.55f);
-        if (cant == 0) {
-            fontMedia.setColor(COL_GRIS_OSC);
-            centrarTexto(fontMedia, "Esperando jugadores...", W, bloqueY);
-        } else if (cant == 1) {
-            fontMedia.setColor(COL_NEGRO);
-            centrarTexto(fontMedia, "Jugador 1 conectado", W, bloqueY);
-        } else {
-            fontMedia.setColor(COL_NEGRO);
-            centrarTexto(fontMedia, "Ambos jugadores conectados", W, bloqueY);
-        }
+        if (cant == 0) { fontMedia.setColor(COL_GRIS_OSC); centrarTexto(fontMedia, "Esperando jugadores...", W, bloqueY); }
+        else if (cant == 1) { fontMedia.setColor(COL_NEGRO); centrarTexto(fontMedia, "Jugador 1 conectado", W, bloqueY); }
+        else { fontMedia.setColor(COL_NEGRO); centrarTexto(fontMedia, "Ambos jugadores conectados", W, bloqueY); }
 
-        // subtexto de estado
         fontChica.setColor(COL_GRIS_OSC);
         fontChica.getData().setScale(1.2f);
-        String sub = (cant < 2)
-                ? cant + " / 2  jugadores conectados"
-                : "Listos para empezar";
-        centrarTexto(fontChica, sub, W, bloqueY - 36);
+        centrarTexto(fontChica, (cant < 2) ? cant + " / 2  jugadores conectados" : "Listos para empezar", W, bloqueY - 36);
 
-        // --- indicadores P1 / P2 ---
         batch.end();
 
-        float circY  = H / 2f - 30f;
-        float circ1X = W / 2f - 140f;
-        float circ2X = W / 2f + 140f;
-        float radio  = 20f;
-
+        float circY = H / 2f - 30f, circ1X = W / 2f - 140f, circ2X = W / 2f + 140f, radio = 20f;
         shape.begin(ShapeRenderer.ShapeType.Filled);
-        shape.setColor(cant >= 1 ? COL_NEGRO : COL_NUBE);
-        shape.circle(circ1X, circY, radio);
-        shape.setColor(cant >= 2 ? COL_NEGRO : COL_NUBE);
-        shape.circle(circ2X, circY, radio);
+        shape.setColor(cant >= 1 ? COL_NEGRO : COL_NUBE); shape.circle(circ1X, circY, radio);
+        shape.setColor(cant >= 2 ? COL_NEGRO : COL_NUBE); shape.circle(circ2X, circY, radio);
         shape.end();
-
         shape.begin(ShapeRenderer.ShapeType.Line);
         Gdx.gl.glLineWidth(2f);
-        shape.setColor(COL_PISO);
-        shape.circle(circ1X, circY, radio + 4);
-        shape.circle(circ2X, circY, radio + 4);
+        shape.setColor(COL_PISO); shape.circle(circ1X, circY, radio + 4); shape.circle(circ2X, circY, radio + 4);
         shape.end();
         Gdx.gl.glLineWidth(1f);
 
         batch.begin();
-        // letras dentro del círculo
         fontChica.getData().setScale(1.15f);
-        fontChica.setColor(cant >= 1 ? COL_BLANCO : COL_GRIS);
-        centrarTexto(fontChica, "P1", circ1X * 2f, circY + 9);
-        fontChica.setColor(cant >= 2 ? COL_BLANCO : COL_GRIS);
-        centrarTexto(fontChica, "P2", circ2X * 2f, circY + 9);
-
-        // etiquetas debajo
-        fontChica.setColor(COL_GRIS_OSC);
-        fontChica.getData().setScale(1.1f);
+        fontChica.setColor(cant >= 1 ? COL_BLANCO : COL_GRIS); centrarTexto(fontChica, "P1", circ1X * 2f, circY + 9);
+        fontChica.setColor(cant >= 2 ? COL_BLANCO : COL_GRIS); centrarTexto(fontChica, "P2", circ2X * 2f, circY + 9);
+        fontChica.setColor(COL_GRIS_OSC); fontChica.getData().setScale(1.1f);
         centrarTexto(fontChica, "Jugador 1", circ1X * 2f, circY - radio - 14);
         centrarTexto(fontChica, "Jugador 2", circ2X * 2f, circY - radio - 14);
 
-        // --- mensaje inferior ---
         if (cant == 2) {
-            // parpadeo como el "Press Space" del original
-            float alpha = 0.5f + 0.5f * (float)Math.abs(Math.sin(tiempo * 3.2f));
+            float alpha = 0.5f + 0.5f * (float) Math.abs(Math.sin(tiempo * 3.2f));
             fontMedia.setColor(COL_NEGRO.r, COL_NEGRO.g, COL_NEGRO.b, alpha);
             fontMedia.getData().setScale(1.4f);
             centrarTexto(fontMedia, "Ambos presionen  JUGAR ONLINE", W, H / 2f - 108f);
         } else {
-            // puntos animados estilo "cargando"
             int dots = (int)(tiempo * 2f) % 4;
-            String espera = "Buscando en la red local" + ".".repeat(dots);
-            fontChica.setColor(COL_GRIS);
-            fontChica.getData().setScale(1.15f);
-            centrarTexto(fontChica, espera, W, H / 2f - 108f);
+            fontChica.setColor(COL_GRIS); fontChica.getData().setScale(1.15f);
+            centrarTexto(fontChica, "Buscando en la red local" + ".".repeat(dots), W, H / 2f - 108f);
         }
 
-        // puerto inferior izquierdo
-        fontChica.setColor(COL_NUBE);
-        fontChica.getData().setScale(1.0f);
+        fontChica.setColor(COL_NUBE); fontChica.getData().setScale(1.0f);
         fontChica.draw(batch, "UDP :" + ServidorDino.PUERTO, 20, 26);
-
         batch.end();
     }
 
@@ -348,65 +344,46 @@ public class PantallaServidor extends ScreenAdapter {
 
         Gdx.gl.glEnable(GL20.GL_BLEND);
         Gdx.gl.glBlendFunc(GL20.GL_SRC_ALPHA, GL20.GL_ONE_MINUS_SRC_ALPHA);
-
         shape.setProjectionMatrix(cam.combined);
 
-        // overlay blanco semitransparente
         shape.begin(ShapeRenderer.ShapeType.Filled);
         shape.setColor(0.95f, 0.95f, 0.95f, 0.80f);
         shape.rect(0, 0, W, H);
         shape.end();
 
-        // caja central
         float bw = 540f, bh = 196f;
         float bx = (W - bw) / 2f, by = (H - bh) / 2f;
 
         shape.begin(ShapeRenderer.ShapeType.Filled);
-        shape.setColor(COL_BLANCO);
-        shape.rect(bx, by, bw, bh);
+        shape.setColor(COL_BLANCO); shape.rect(bx, by, bw, bh);
         shape.end();
 
-        // borde negro fino
         shape.begin(ShapeRenderer.ShapeType.Line);
-        Gdx.gl.glLineWidth(2f);
-        shape.setColor(COL_NEGRO);
-        shape.rect(bx, by, bw, bh);
-        shape.end();
-        Gdx.gl.glLineWidth(1f);
+        Gdx.gl.glLineWidth(2f); shape.setColor(COL_NEGRO); shape.rect(bx, by, bw, bh);
+        shape.end(); Gdx.gl.glLineWidth(1f);
 
-        // franja negra superior (estilo panel Chrome)
         shape.begin(ShapeRenderer.ShapeType.Filled);
-        shape.setColor(COL_NEGRO);
-        shape.rect(bx, by + bh - 7f, bw, 7f);
+        shape.setColor(COL_NEGRO); shape.rect(bx, by + bh - 7f, bw, 7f);
         shape.end();
 
         batch.setProjectionMatrix(cam.combined);
         batch.begin();
-
-        fontGrande.setColor(COL_NEGRO);
-        fontGrande.getData().setScale(2.7f);
+        fontGrande.setColor(COL_NEGRO); fontGrande.getData().setScale(2.7f);
         centrarTexto(fontGrande, "GAME OVER", W, by + bh - 16);
-
-        fontMedia.setColor(COL_GRIS_OSC);
-        fontMedia.getData().setScale(1.6f);
+        fontMedia.setColor(COL_GRIS_OSC); fontMedia.getData().setScale(1.6f);
         centrarTexto(fontMedia, snap.mensajeFin.toUpperCase(), W, by + bh / 2f + 14);
-
-        fontChica.setColor(COL_GRIS);
-        fontChica.getData().setScale(1.2f);
+        fontChica.setColor(COL_GRIS); fontChica.getData().setScale(1.2f);
         centrarTexto(fontChica, "SCORE  " + String.format("%05d", snap.score), W, by + 46);
-
         batch.end();
     }
 
-    // -------------------------------------------------------------------------
-    /** Dibuja una nube pixel-art con rectángulos apilados, igual al juego de Chrome. */
     private void dibujarNube(float x, float y, float w) {
         float h = w * 0.40f;
         shape.setColor(COL_NUBE);
-        shape.rect(x + w * 0.15f, y,            w * 0.70f, h * 0.52f); // cuerpo
-        shape.rect(x + w * 0.30f, y + h * 0.42f, w * 0.40f, h * 0.36f); // cima
-        shape.rect(x,             y + h * 0.14f, w * 0.20f, h * 0.34f); // lado izq
-        shape.rect(x + w * 0.80f, y + h * 0.14f, w * 0.20f, h * 0.34f); // lado der
+        shape.rect(x + w * 0.15f, y,             w * 0.70f, h * 0.52f);
+        shape.rect(x + w * 0.30f, y + h * 0.42f, w * 0.40f, h * 0.36f);
+        shape.rect(x,             y + h * 0.14f, w * 0.20f, h * 0.34f);
+        shape.rect(x + w * 0.80f, y + h * 0.14f, w * 0.20f, h * 0.34f);
     }
 
     private void centrarTexto(BitmapFont font, String texto, float areaW, float y) {
@@ -421,10 +398,7 @@ public class PantallaServidor extends ScreenAdapter {
         return (tick % 12 < 6) ? assets.dinoMov1 : assets.dinoMov2;
     }
 
-    @Override
-    public void resize(int width, int height) {
-        viewport.update(width, height, true);
-    }
+    @Override public void resize(int w, int h) { viewport.update(w, h, true); }
 
     @Override
     public void dispose() {

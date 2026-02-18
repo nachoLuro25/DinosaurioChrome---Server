@@ -12,13 +12,14 @@ public class SnapshotDino {
     public boolean terminado;
     public String mensajeFin = "";
 
-
     public int resetReadyCount = 0;
 
     public DinoState p1 = new DinoState();
     public DinoState p2 = new DinoState();
 
-    public ArrayList<ObstacleState> obstacles = new ArrayList<>();
+    // cada jugador tiene su propia lista de obstaculos (pistas independientes)
+    public ArrayList<ObstacleState> obstaculosP1 = new ArrayList<>();
+    public ArrayList<ObstacleState> obstaculosP2 = new ArrayList<>();
 
     public static class DinoState {
         public float y, vy;
