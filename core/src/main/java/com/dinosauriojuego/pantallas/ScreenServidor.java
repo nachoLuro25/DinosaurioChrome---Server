@@ -14,12 +14,12 @@ import com.badlogic.gdx.utils.viewport.FitViewport;
 import com.badlogic.gdx.utils.viewport.Viewport;
 
 import com.dinosauriojuego.core.Main;
-import com.dinosauriojuego.net.ServidorDino;
+import com.dinosauriojuego.net.DinosaurioServidor;
 import com.dinosauriojuego.server.SnapshotDino;
 import com.dinosauriojuego.utiles.Assets;
 import com.dinosauriojuego.utiles.Constantes;
 
-public class PantallaServidor extends ScreenAdapter {
+public class ScreenServidor extends ScreenAdapter {
 
     private final Main   juego;
     private final Assets assets;
@@ -41,7 +41,7 @@ public class PantallaServidor extends ScreenAdapter {
     private boolean esNoche = false;
     private static final int SCORE_CAMBIO = 500;
 
-    private ServidorDino server;
+    private DinosaurioServidor server;
     private float tiempo       = 0f;
     private float dinoAnimTick = 0f;
 
@@ -61,7 +61,7 @@ public class PantallaServidor extends ScreenAdapter {
     private static final Color COL_GRIS_OSC= new Color(0.38f, 0.38f, 0.38f, 1f);
     private static final Color COL_NEGRO   = new Color(0.20f, 0.20f, 0.20f, 1f);
 
-    public PantallaServidor(Main juego, Assets assets) {
+    public ScreenServidor(Main juego, Assets assets) {
         this.juego  = juego;
         this.assets = assets;
     }
@@ -86,7 +86,7 @@ public class PantallaServidor extends ScreenAdapter {
             nubeY[i] = alts[i]; nubeSpd[i] = spds[i]; nubeW[i] = anchs[i];
         }
 
-        server = new ServidorDino();
+        server = new DinosaurioServidor();
         server.setDaemon(true);
         server.start();
     }
@@ -328,7 +328,7 @@ public class PantallaServidor extends ScreenAdapter {
         }
 
         fontChica.setColor(COL_NUBE); fontChica.getData().setScale(1.0f);
-        fontChica.draw(batch, "UDP :" + ServidorDino.PUERTO, 20, 26);
+        fontChica.draw(batch, "UDP :" + DinosaurioServidor.PUERTO, 20, 26);
         batch.end();
     }
 

@@ -6,7 +6,7 @@ import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.Random;
 
-public class GameSimDino {
+public class DinosaurioGame {
 
     public static class Dino {
         public float y;

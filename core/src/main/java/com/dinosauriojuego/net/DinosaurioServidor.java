@@ -1,6 +1,7 @@
 package com.dinosauriojuego.net;
 
-import com.dinosauriojuego.server.GameSimDino;
+import com.dinosauriojuego.server.DinosaurioGame;
+import com.dinosauriojuego.server.DinosaurioGame;
 import com.dinosauriojuego.server.SnapshotDino;
 
 import java.net.DatagramPacket;
@@ -9,7 +10,7 @@ import java.net.InetAddress;
 import java.nio.charset.StandardCharsets;
 
 //el servidor recibe inputs, controla el ritmo del juego y distribuye snapshots para mantener a todos sincronizados.
-public class ServidorDino extends Thread {
+public class DinosaurioServidor extends Thread {
 
     public static final int PUERTO = 8999;
     private static final int MAX_CLIENTES = 2;
@@ -31,11 +32,11 @@ public class ServidorDino extends Thread {
     private boolean j1Jump, j1Crouch;
     private boolean j2Jump, j2Crouch;
 
-    private final GameSimDino sim = new GameSimDino();
+    private final DinosaurioGame sim = new DinosaurioGame();
     private int tick = 0;
     private SnapshotDino lastSnapshot;
 
-    public ServidorDino() {
+    public DinosaurioServidor() {
         try {
             socket = new DatagramSocket(PUERTO);
             socket.setSoTimeout(5);
@@ -212,7 +213,7 @@ public class ServidorDino extends Thread {
         s.p2.vivo     = sim.p2.vivo;
 
         // copiar obstaculos de la pista 1
-        for (GameSimDino.Obstacle o : sim.obstaculosP1) {
+        for (DinosaurioGame.Obstacle o : sim.obstaculosP1) {
             SnapshotDino.ObstacleState os = new SnapshotDino.ObstacleState();
             os.type    = o.type;
             os.variant = o.variant;
@@ -222,7 +223,7 @@ public class ServidorDino extends Thread {
         }
 
         // copiar obstaculos de la pista 2
-        for (GameSimDino.Obstacle o : sim.obstaculosP2) {
+        for (DinosaurioGame.Obstacle o : sim.obstaculosP2) {
             SnapshotDino.ObstacleState os = new SnapshotDino.ObstacleState();
             os.type    = o.type;
             os.variant = o.variant;

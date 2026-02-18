@@ -1,7 +1,8 @@
 package com.dinosauriojuego.core;
 
 import com.badlogic.gdx.Game;
-import com.dinosauriojuego.pantallas.PantallaServidor;
+import com.dinosauriojuego.pantallas.ScreenServidor;
+import com.dinosauriojuego.pantallas.ScreenServidor;
 import com.dinosauriojuego.utiles.Assets;
 
 public class Main extends Game {
@@ -11,7 +12,7 @@ public class Main extends Game {
     public void create() {
         assets = new Assets();
         assets.cargar();
-        setScreen(new PantallaServidor(this, assets));
+        setScreen(new ScreenServidor(this, assets));
     }
 
     @Override
