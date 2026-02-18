@@ -169,7 +169,7 @@ public class GameSimDino {
         float hitH = spriteH - (d.agachado ? 25f : 40f);
 
         float hitX = dx + 48f;
-        float hitY = d.agachado ? d.y + 4f : d.y + 40f;  // <-- está bien
+        float hitY = d.agachado ? d.y + 44f : d.y + 40f;
 
         for (Obstacle o : lista) {
             if (rectOverlap(hitX, hitY, hitW, hitH, o.hitX(), o.hitY(), o.hitW(), o.hitH())) return true;

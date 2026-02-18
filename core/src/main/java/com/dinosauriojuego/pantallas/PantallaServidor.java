@@ -52,8 +52,6 @@ public class PantallaServidor extends ScreenAdapter {
     private float[] nubeSpd = new float[NUM_NUBES];
     private float[] nubeW   = new float[NUM_NUBES];
 
-    private float[] cactusDecoX = { 180f, 520f, 820f, 1100f };
-
     // paleta Chrome
     private static final Color COL_BG      = new Color(0.95f, 0.95f, 0.95f, 1f);
     private static final Color COL_BLANCO  = new Color(1f,    1f,    1f,    1f);
@@ -258,9 +256,6 @@ public class PantallaServidor extends ScreenAdapter {
         // cactus decorativos
         batch.setProjectionMatrix(cam.combined);
         batch.begin();
-        batch.setColor(0.78f, 0.78f, 0.78f, 1f);
-        for (float cx : cactusDecoX) batch.draw(assets.cactusChico1, cx, Constantes.Y_PISO_P1);
-        batch.setColor(COL_BLANCO);
 
         // dino animado
         Texture dinoTex = ((int) dinoAnimTick % 12 < 6) ? assets.dinoMov1 : assets.dinoMov2;
